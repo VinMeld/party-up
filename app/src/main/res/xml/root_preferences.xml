@@ -5,17 +5,22 @@
     <PreferenceCategory app:title="Connection">
 
         <EditTextPreference
-            android:defaultValue="http://192.168.1.120:3923/"
-            android:key="server_url"
+            android:key="papra_url"
             android:selectAllOnFocus="true"
             android:singleLine="true"
-            android:title="Server URL"
+            android:title="Papra URL"
             app:useSimpleSummaryProvider="true" />
         <EditTextPreference
-            android:key="server_password"
+            android:key="papra_token"
             android:selectAllOnFocus="true"
             android:singleLine="true"
-            android:title="Password"
+            android:title="API Token"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            android:key="papra_org_id"
+            android:selectAllOnFocus="true"
+            android:singleLine="true"
+            android:title="Organization ID"
             app:useSimpleSummaryProvider="true" />
 
     </PreferenceCategory>

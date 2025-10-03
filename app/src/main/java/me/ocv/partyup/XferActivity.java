@@ -16,6 +16,8 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import androidx.appcompat.app.AlertDialog;
@@ -30,6 +32,9 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.preference.PreferenceManager;
 import android.widget.Toast;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -57,18 +62,26 @@ class F {
     public String full_url;
     public String share_url;
     public String desc;
+    public String documentId;
 }
 
 public class XferActivity extends AppCompatActivity {
     ActivityXferBinding binding;
     SharedPreferences prefs;
     Intent the_intent;
-    String password;
-    String base_url;
+    String token;
+    String orgId;
+    String papra_url;
     boolean upping;
     String the_msg;
     long bytes_done, bytes_total, t0;
     F[] files;
+
+    ArrayList<PapraTag> allTags = new ArrayList<>();
+    ArrayList<PapraTag> selectedTags = new ArrayList<>();
+    Button btnSelectTags;
+    ChipGroup tagGroup;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,6 +92,10 @@ public class XferActivity extends AppCompatActivity {
         binding = ActivityXferBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
         setSupportActionBar(binding.toolbar);
+
+        btnSelectTags = findViewById(R.id.btnSelectTags);
+        tagGroup = findViewById(R.id.tag_group);
+        btnSelectTags.setEnabled(false);
 
         the_intent = getIntent();
         String etype = the_intent.getType();
@@ -118,15 +135,153 @@ public class XferActivity extends AppCompatActivity {
             return;
         }
 
-        password = prefs.getString("server_password", "");
-        if (password == null || password.isEmpty() || password.equals("Default value"))
-            password = null;
+        token = prefs.getString("papra_token", "");
+        orgId = prefs.getString("papra_org_id", "");
+        papra_url = prefs.getString("papra_url", "");
 
         final FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
         fab.setOnClickListener(v -> {
             fab.setVisibility(View.GONE);
             do_up();
         });
+
+        btnSelectTags.setOnClickListener(v -> showTagSelectionDialog());
+
+        fetchTags();
+    }
+
+    private void fetchTags() {
+        new Thread(() -> {
+            HttpURLConnection conn = null;
+            try {
+                tshow_msg("Fetching tags...");
+                String base_url = papra_url;
+                if (base_url == null || base_url.isEmpty()) {
+                    tshow_msg("Error: Papra URL is not set in settings.");
+                    return;
+                }
+                if (token == null || token.isEmpty()) {
+                    tshow_msg("Error: Papra Token is not set in settings.");
+                    return;
+                }
+                if (orgId == null || orgId.isEmpty()) {
+                    tshow_msg("Error: Papra Org ID is not set in settings.");
+                    return;
+                }
+
+                if (!base_url.toLowerCase().startsWith("http")) {
+                    base_url = "https://" + base_url;
+                }
+
+                if (!base_url.endsWith("/"))
+                    base_url += "/";
+
+                final String final_url_str = base_url + "api/organizations/" + orgId + "/tags";
+                Log.d("me.ocv.partyup", "fetchTags URL: " + final_url_str);
+
+                tshow_msg("Requesting URL:\n" + final_url_str);
+
+                URL url = new URL(final_url_str);
+                conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestProperty("Authorization", "Bearer " + token);
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(15000);
+
+                final int rc = conn.getResponseCode();
+                Log.d("me.ocv.partyup", "fetchTags response code: " + rc);
+
+                InputStream is = (rc >= 200 && rc < 300) ? conn.getInputStream() : conn.getErrorStream();
+                final String responseString;
+                if (is != null) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(is));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        sb.append(line).append('\n');
+                    }
+                    br.close();
+                    responseString = sb.toString();
+                } else {
+                    responseString = "No response body from server.";
+                }
+
+                Log.d("me.ocv.partyup", "fetchTags response body: " + responseString);
+
+                final String debugText = "URL: " + final_url_str + "\n\n" +
+                        "Response Code: " + rc + "\n\n" +
+                        "Response:\n" + responseString;
+
+                tshow_msg(debugText);
+
+                if (rc == 200) {
+                    JSONObject json = new JSONObject(responseString);
+                    JSONArray tags = json.getJSONArray("tags");
+                    allTags.clear();
+                    for (int i = 0; i < tags.length(); i++) {
+                        JSONObject tag = tags.getJSONObject(i);
+                        allTags.add(new PapraTag(tag.getString("id"), tag.getString("name")));
+                    }
+
+                    runOnUiThread(() -> {
+                        btnSelectTags.setEnabled(true);
+                        String successMsg = "Loaded " + allTags.size() + " tags.";
+                        Toast.makeText(XferActivity.this, successMsg, Toast.LENGTH_LONG).show();
+                        if (allTags.isEmpty()){
+                            Toast.makeText(XferActivity.this, "Warning: Parsed 0 tags from success response.", Toast.LENGTH_LONG).show();
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                Log.e("me.ocv.partyup", "Exception in fetchTags", e);
+                tshow_msg("Exception while fetching tags:\n" + e.toString() + "\n\nCheck Logcat for more details.");
+            } finally {
+                if (conn != null) {
+                    conn.disconnect();
+                }
+            }
+        }).start();
+    }
+
+    private void showTagSelectionDialog() {
+        if (allTags.isEmpty()) {
+            Toast.makeText(this, "No tags to show", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String[] tagNames = new String[allTags.size()];
+        boolean[] checkedItems = new boolean[allTags.size()];
+        for (int i = 0; i < allTags.size(); i++) {
+            tagNames[i] = allTags.get(i).name;
+            //checkedItems[i] = selectedTags.contains(allTags.get(i));
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Select Tags");
+        builder.setMultiChoiceItems(tagNames, checkedItems, (dialog, which, isChecked) -> {
+            if (isChecked) {
+                selectedTags.add(allTags.get(which));
+            } else {
+                selectedTags.remove(allTags.get(which));
+            }
+        });
+        builder.setPositiveButton("OK", (dialog, which) -> {
+            updateTagGroup();
+        });
+        builder.setNegativeButton("Cancel", null);
+        builder.create().show();
+    }
+
+    private void updateTagGroup() {
+        tagGroup.removeAllViews();
+        for (PapraTag tag : selectedTags) {
+            Chip chip = new Chip(this);
+            chip.setText(tag.name);
+            chip.setCloseIconVisible(true);
+            chip.setOnCloseIconClickListener(v -> {
+                selectedTags.remove(tag);
+                updateTagGroup();
+            });
+            tagGroup.addView(chip);
+        }
     }
 
     private void show_msg(String txt) {
@@ -316,42 +471,44 @@ public class XferActivity extends AppCompatActivity {
 
     private void do_up2() {
         try {
-            base_url = prefs.getString("server_url", "");
-            if (base_url == null)
-                throw new Exception("server_url config is invalid");
+            if (papra_url == null || papra_url.isEmpty()) {
+                throw new Exception("papra_url config is invalid");
+            }
 
-            if (!base_url.startsWith("http"))
-                base_url = "http://" + base_url;
+            if (token == null || token.isEmpty()) {
+                throw new Exception("papra_token config is invalid");
+            }
+
+            if (orgId == null || orgId.isEmpty()) {
+                throw new Exception("papra_org_id config is invalid");
+            }
+
+            String base_url = papra_url;
+            if (!base_url.toLowerCase().startsWith("http")) {
+                base_url = "https://" + base_url;
+            }
 
             if (!base_url.endsWith("/"))
                 base_url += "/";
 
-            if (base_url.contains("%")) {
-                String[] dtc = "%Y %q %m %d %j %H %M %S".split(" ");
-                DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy Q MM dd DDD HH mm ss");
-                String[] dtp = dtf.withZone(ZoneId.from(ZoneOffset.UTC)).format(Instant.now()).split(" ");
-                for (int a = 0; a < dtc.length; a++)
-                    base_url = base_url.replace(dtc[a], dtp[a]);
-            }
+            String documents_url = base_url + "api/organizations/" + orgId + "/documents";
 
             t0 = System.currentTimeMillis();
-            tshow_msg("Sending to " + base_url + " ...");
+            tshow_msg("Sending to " + documents_url + " ...");
 
             int nfiles = files == null ? 1 : files.length;
             for (int a = 0; a < nfiles; a++) {
-                String full_url = base_url;
+                String full_url = documents_url;
                 if (files != null) {
                     F f = files[a];
-                    full_url += URLEncoder.encode(f.name, "UTF-8");
-                    tshow_msg("Sending to " + base_url + " ...\n\n" + f.desc);
+                    tshow_msg("Sending to " + documents_url + " ...\n\n" + f.desc);
                     f.full_url = full_url;
                 }
 
                 URL url = new URL(full_url);
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setDoOutput(true);
-                if (password != null)
-                    conn.setRequestProperty("PW", password);
+                conn.setRequestProperty("Authorization", "Bearer " + token);
 
                 if (files == null)
                     do_textmsg(conn);
@@ -360,7 +517,7 @@ public class XferActivity extends AppCompatActivity {
             }
             findViewById(R.id.upper_info).post(() -> onsuccess());
         } catch (Exception ex) {
-            tshow_msg("Error2: " + ex.toString() + "\n\nmaybe wrong password?");
+            tshow_msg("Error2: " + ex.toString());
         }
     }
 
@@ -395,15 +552,20 @@ public class XferActivity extends AppCompatActivity {
     @SuppressLint("DefaultLocale")
     private boolean do_fileput(HttpURLConnection conn, int nfile) throws Exception {
         F f = files[nfile];
-        conn.setRequestMethod("PUT");
-        conn.setFixedLengthStreamingMode(f.size);
-        conn.setRequestProperty("Content-Type", "application/octet-stream");
-        conn.connect();
-        final TextView tv = (TextView) findViewById(R.id.upper_info);
-        final ProgressBar pb = (ProgressBar) findViewById(R.id.progbar);
+        conn.setRequestMethod("POST");
+        String boundary = "*****" + System.currentTimeMillis() + "*****";
+        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+
         OutputStream os = conn.getOutputStream();
+
+        // Write file part
+        String header = "--" + boundary + "\r\n";
+        header += "Content-Disposition: form-data; name=\"file\"; filename=\"" + f.name + "\"\r\n";
+        header += "Content-Type: application/octet-stream\r\n";
+        header += "\r\n";
+        os.write(header.getBytes(StandardCharsets.UTF_8));
+
         InputStream ins = getContentResolver().openInputStream(f.handle);
-        MessageDigest md = MessageDigest.getInstance("SHA-512");
         byte[] buf = new byte[128 * 1024];
         assert ins != null;
         while (true) {
@@ -413,57 +575,74 @@ public class XferActivity extends AppCompatActivity {
 
             bytes_done += n;
             os.write(buf, 0, n);
-            md.update(buf, 0, n);
-
-            tv.post(() -> {
-                double perc = ((double) bytes_done * 1000) / bytes_total;
-                long td = 1 + System.currentTimeMillis() - t0;
-                double spd = bytes_done / (td / 1000.0);
-                long left = (long) ((bytes_total - bytes_done) / spd);
-                tv.setText(format("Sending to %s ...\n\nFile %d of %d:\n%s\n\nbytes done:  %,d\nbytes left:  %,d\nspeed:  %.2f MiB/s\nprogress:  %.2f %%\nETA:  %d sec",
-                        base_url,
-                        nfile + 1,
-                        files.length,
-                        f.desc,
-                        bytes_done,
-                        bytes_total - bytes_done,
-                        spd / 1024 / 1024,
-                        perc / 10,
-                        left
-                ));
-                pb.setProgress((int) Math.round(perc));
-            });
         }
+
+        os.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         os.flush();
+
         int rc = conn.getResponseCode();
         if (rc >= 300) {
             tshow_msg("Server error " + rc + ":\n" + read_err(conn));
             conn.disconnect();
             return false;
         }
-        String sha = "";
-        byte[] bsha = md.digest();
-        for (int a = 0; a < 28; a++)
-            sha += format("%02x", bsha[a]);
 
         BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-        String[] lines = br.lines().toArray(String[]::new);
+        StringBuilder sb = new StringBuilder();
+        String line;
+        while ((line = br.readLine()) != null) {
+            sb.append(line);
+        }
+        br.close();
         conn.disconnect();
 
-        if (lines.length < 3) {
-            tshow_msg("SERVER ERROR:\n" + lines[0]);
-            return false;
-        }
-        if (lines[2].indexOf(sha) != 0) {
-            tshow_msg("ERROR:\nFile got corrupted during the upload;\n\n" + lines[2] + " expected\n" + sha + " from server");
-            return false;
-        }
-        if (lines.length > 3 && !lines[3].isEmpty())
-            f.share_url = lines[3];
-        else
-            f.share_url = f.full_url.split("\\?")[0];
+        JSONObject json = new JSONObject(sb.toString());
+        f.documentId = json.getJSONObject("document").getString("id");
+
+        addTagsToDocument(f);
 
         return true;
+    }
+
+    private void addTagsToDocument(F f) {
+        if (selectedTags.isEmpty()) {
+            return;
+        }
+        new Thread(() -> {
+            try {
+                String base_url = papra_url;
+                if (!base_url.toLowerCase().startsWith("http")) {
+                    base_url = "https://" + base_url;
+                }
+
+                if (!base_url.endsWith("/"))
+                    base_url += "/";
+
+                for (PapraTag tag : selectedTags) {
+                    URL url = new URL(base_url + "api/organizations/" + orgId + "/documents/" + f.documentId + "/tags");
+                    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Authorization", "Bearer " + token);
+                    conn.setRequestProperty("Content-Type", "application/json");
+
+                    JSONObject body = new JSONObject();
+                    body.put("tagId", tag.id);
+
+                    OutputStream os = conn.getOutputStream();
+                    os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+                    os.flush();
+
+                    int rc = conn.getResponseCode();
+                    if (rc >= 300) {
+                        Log.e("me.ocv.partyup", "Error adding tag: " + rc);
+                    }
+                    conn.disconnect();
+                }
+            } catch (Exception e) {
+                Log.e("me.ocv.partyup", "Error adding tags: " + e.toString());
+            }
+        }).start();
     }
 
     void onsuccess() {
