@@ -531,8 +531,7 @@ public class XferActivity extends AppCompatActivity {
 
         // Write file part
         String header = "--" + boundary + "\r\n";
-        header += "Content-Disposition: form-data; name=\"file\"; filename=\"" + f.name + "\"\r
-";
+        header += "Content-Disposition: form-data; name=\"file\"; filename=\"" + f.name + "\"\r\n";
         header += "Content-Type: application/octet-stream\r\n";
         header += "\r\n";
         os.write(header.getBytes(StandardCharsets.UTF_8));
