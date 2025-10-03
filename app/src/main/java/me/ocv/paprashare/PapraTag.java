@@ -1,4 +1,4 @@
-package me.ocv.partyup;
+package me.ocv.paprashare;
 
 public class PapraTag {
     public String id;

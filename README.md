@@ -1,12 +1,15 @@
-# Party UP!
+# Papra Share
 
-<a href="https://f-droid.org/packages/me.ocv.partyup/"><img src="https://ocv.me/fdroid.png" alt="Get it on F-Droid" height="50" /> '' <img src="https://img.shields.io/f-droid/v/me.ocv.partyup.svg" alt="f-droid version info" /></a> '' <a href="https://github.com/9001/party-up"><img src="https://img.shields.io/github/release/9001/party-up.svg?logo=github" alt="github version info" /></a>
+THIS IS A FORK OF PARTY UP! I developped it since I was annoyed about having to move to the papra app
+
+[Papra](https://papra.app/)
+[partyup](https://github.com/9001/party-up)
+[copyparty](https://github.com/9001/copyparty)
+
+
+<a href="https://f-droid.org/packages/me.ocv.partyup/"><img src="https://ocv.me/fdroid.png" alt="Get it on F-Droid" height="50" /></a> '' <img src="https://img.shields.io/f-droid/v/me.ocv.partyup.svg" alt="f-droid version info" /> '' <a href="https://github.com/9001/party-up"><img src="https://img.shields.io/github/release/9001/party-up.svg?logo=github" alt="github version info" /></a>
 
 upload files and links to a [copyparty](https://github.com/9001/copyparty) server by sharing them to this app
-
-primarily made for this year's meadup, letting a room full of nerds throw memes onto the big screen
-
-only the PUT API is implemented for now so there is no resumable uploads yet
 
 
 ## basic usage
@@ -16,7 +19,7 @@ only the PUT API is implemented for now so there is no resumable uploads yet
 * install the app
 * open it and set your server url (and password if applicable)
 
-now all share buttons in other apps/browsers will have "Party UP!" as an option, letting you upload pics / vids / twitter links / anything really
+now all share buttons in other apps/browsers will have "Papra Share" as an option, letting you upload pics / vids / twitter links / anything really
 
 
 ## in case of permission errors
@@ -25,28 +28,4 @@ as of Android 11 (SDK30), a new API for sharing files was unfortunately enforced
 
 if you get `Error3: java.io.FileNotFoundException` then that's because you are sharing files from an app which is still using the old API, which has now become forbidden for new apps to use
 
-if you really need to share files from such outdated apps, then you'll have to use PartyUP 1.6.0 or older -- these versions were compiled for Android 9 (SDK28) which gives them permission to use the old API
-
-
-## the full experience
-
-setup a raspberry pi (raspbian or something else with a desktop) with the [very-bad-idea](https://github.com/9001/copyparty/blob/hovudstraum/bin/mtag/very-bad-idea.py) plugin:
-
-```bash
-sudo apt install xdotool wmctrl libnotify-bin
-curl -LO https://github.com/9001/copyparty/releases/latest/download/copyparty-sfx.py
-curl -LO https://raw.githubusercontent.com/9001/copyparty/hovudstraum/bin/mtag/very-bad-idea.py
-python3 copyparty-sfx.py --urlform save,get -a kevin:hunter2 -v.::rw,kevin:c,e2d,e2t,mte=+a1:c,mtp=a1=ad,t3,kn,very-bad-idea.py
-```
-
-**WARNING:** by design, the `very-bad-idea` plugin makes it possible for anyone (with upload access) to hijack the copyparty server... so keep this on a LAN with people you trust, and give it a good password!
-* and replace the example password `hunter2` for the example account `kevin` as appropriate
-
-now, every time someone uploads something, it'll appear on the screen
-* there is no queue system, it just goes
-
-check the startup script in the very-bad-idea docstring for some bonus features,
-* display a QR-code on the screen which takes people to the upload page
-* make chrome autoplay audio on all pages
-
-also [twitter-unmute.user.js](https://github.com/9001/copyparty/blob/hovudstraum/bin/mtag/res/twitter-unmute.user.js) to play twitter links with audio
+if you really need to share files from such outdated apps, then you'll have to use Papra Share 1.6.0 or older -- these versions were compiled for Android 9 (SDK28) which gives them permission to use the old API

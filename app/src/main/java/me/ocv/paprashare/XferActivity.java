@@ -1,4 +1,4 @@
-package me.ocv.partyup;
+package me.ocv.paprashare;
 
 import static java.lang.String.format;
 
@@ -46,14 +46,10 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Base64;
 
-import me.ocv.partyup.databinding.ActivityXferBinding;
+import me.ocv.paprashare.databinding.ActivityXferBinding;
 
 class F {
     public Uri handle;
@@ -154,18 +150,9 @@ public class XferActivity extends AppCompatActivity {
         new Thread(() -> {
             HttpURLConnection conn = null;
             try {
-                tshow_msg("Fetching tags...");
                 String base_url = papra_url;
                 if (base_url == null || base_url.isEmpty()) {
-                    tshow_msg("Error: Papra URL is not set in settings.");
-                    return;
-                }
-                if (token == null || token.isEmpty()) {
-                    tshow_msg("Error: Papra Token is not set in settings.");
-                    return;
-                }
-                if (orgId == null || orgId.isEmpty()) {
-                    tshow_msg("Error: Papra Org ID is not set in settings.");
+                    runOnUiThread(() -> Toast.makeText(XferActivity.this, "Error: Papra URL is not set", Toast.LENGTH_LONG).show());
                     return;
                 }
 
@@ -176,42 +163,25 @@ public class XferActivity extends AppCompatActivity {
                 if (!base_url.endsWith("/"))
                     base_url += "/";
 
-                final String final_url_str = base_url + "api/organizations/" + orgId + "/tags";
-                Log.d("me.ocv.partyup", "fetchTags URL: " + final_url_str);
-
-                tshow_msg("Requesting URL:\n" + final_url_str);
-
-                URL url = new URL(final_url_str);
+                URL url = new URL(base_url + "api/organizations/" + orgId + "/tags");
                 conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestProperty("Authorization", "Bearer " + token);
                 conn.setConnectTimeout(15000);
                 conn.setReadTimeout(15000);
 
-                final int rc = conn.getResponseCode();
-                Log.d("me.ocv.partyup", "fetchTags response code: " + rc);
-
+                int rc = conn.getResponseCode();
                 InputStream is = (rc >= 200 && rc < 300) ? conn.getInputStream() : conn.getErrorStream();
-                final String responseString;
-                if (is != null) {
-                    BufferedReader br = new BufferedReader(new InputStreamReader(is));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = br.readLine()) != null) {
-                        sb.append(line).append('\n');
-                    }
-                    br.close();
-                    responseString = sb.toString();
-                } else {
-                    responseString = "No response body from server.";
+                BufferedReader br = new BufferedReader(new InputStreamReader(is));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    sb.append(line);
                 }
+                br.close();
+                String responseString = sb.toString();
 
-                Log.d("me.ocv.partyup", "fetchTags response body: " + responseString);
-
-                final String debugText = "URL: " + final_url_str + "\n\n" +
-                        "Response Code: " + rc + "\n\n" +
-                        "Response:\n" + responseString;
-
-                tshow_msg(debugText);
+                Log.d("me.ocv.paprashare", "fetchTags response code: " + rc);
+                Log.d("me.ocv.paprashare", "fetchTags response body: " + responseString);
 
                 if (rc == 200) {
                     JSONObject json = new JSONObject(responseString);
@@ -225,15 +195,16 @@ public class XferActivity extends AppCompatActivity {
                     runOnUiThread(() -> {
                         btnSelectTags.setEnabled(true);
                         String successMsg = "Loaded " + allTags.size() + " tags.";
-                        Toast.makeText(XferActivity.this, successMsg, Toast.LENGTH_LONG).show();
-                        if (allTags.isEmpty()){
-                            Toast.makeText(XferActivity.this, "Warning: Parsed 0 tags from success response.", Toast.LENGTH_LONG).show();
-                        }
+                        Toast.makeText(XferActivity.this, successMsg, Toast.LENGTH_SHORT).show();
                     });
+                } else {
+                    final String errorMsg = "Error fetching tags: " + rc;
+                    runOnUiThread(() -> Toast.makeText(XferActivity.this, errorMsg, Toast.LENGTH_LONG).show());
                 }
             } catch (Exception e) {
-                Log.e("me.ocv.partyup", "Exception in fetchTags", e);
-                tshow_msg("Exception while fetching tags:\n" + e.toString() + "\n\nCheck Logcat for more details.");
+                Log.e("me.ocv.paprashare", "Exception in fetchTags", e);
+                final String errorMsg = "Network Error: " + e.getMessage();
+                runOnUiThread(() -> Toast.makeText(XferActivity.this, errorMsg, Toast.LENGTH_LONG).show());
             } finally {
                 if (conn != null) {
                     conn.disconnect();
@@ -244,7 +215,7 @@ public class XferActivity extends AppCompatActivity {
 
     private void showTagSelectionDialog() {
         if (allTags.isEmpty()) {
-            Toast.makeText(this, "No tags to show", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "No tags available to select.", Toast.LENGTH_SHORT).show();
             return;
         }
         String[] tagNames = new String[allTags.size()];
@@ -295,7 +266,7 @@ public class XferActivity extends AppCompatActivity {
 
     void need_storage(String exmsg) {
         if (Build.VERSION.SDK_INT > 29 && exmsg.contains("EACCES"))
-            show_msg(exmsg + "\n\nYou must update the app you shared the file from; it is using a dead/forbidden API for sharing files, and Android is preventing new versions of PartyUP! from using this API. Older versions of PartyUP! such as 1.6.0 may work.");
+            show_msg(exmsg + "\n\nYou must update the app you shared the file from; it is using a dead/forbidden API for sharing files, and Android is preventing new versions of PapraShare from using this API. Older versions of PapraShare such as 1.6.0 may work.");
 
         String perm = Manifest.permission.READ_EXTERNAL_STORAGE;
         if (this.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED)
@@ -306,7 +277,7 @@ public class XferActivity extends AppCompatActivity {
             return;
         }
         AlertDialog.Builder ab = new AlertDialog.Builder(findViewById(R.id.upper_info).getContext());
-        ab.setMessage("PartyUP! needs additional permissions to read that file, because the app you shared it from is using old APIs."
+        ab.setMessage("Papra Share! needs additional permissions to read that file, because the app you shared it from is using old APIs."
         ).setPositiveButton("OK", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
@@ -380,7 +351,7 @@ public class XferActivity extends AppCompatActivity {
     @SuppressLint("DefaultLocale")
     private void handleSendImage() {
         for (F f : files) {
-            Log.d("me.ocv.partyup", format("handle [%s]", f.handle));
+            Log.d("me.ocv.paprashare", format("handle [%s]", f.handle));
             if (f.handle.toString().startsWith("file:///")) {
                 f.name = Paths.get(f.handle.getPath()).getFileName().toString();
             } else {
@@ -396,7 +367,7 @@ public class XferActivity extends AppCompatActivity {
                     f.size = cur.getLong(isize);
                     cur.close();
                 } catch (Exception ex) {
-                    Log.w("me.ocv.partyup", "contentresolver: " + ex.toString());
+                    Log.w("me.ocv.paprashare", "contentresolver: " + ex.toString());
                 }
             }
 
@@ -560,7 +531,8 @@ public class XferActivity extends AppCompatActivity {
 
         // Write file part
         String header = "--" + boundary + "\r\n";
-        header += "Content-Disposition: form-data; name=\"file\"; filename=\"" + f.name + "\"\r\n";
+        header += "Content-Disposition: form-data; name=\"file\"; filename=\"" + f.name + "\"\r
+";
         header += "Content-Type: application/octet-stream\r\n";
         header += "\r\n";
         os.write(header.getBytes(StandardCharsets.UTF_8));
@@ -635,12 +607,12 @@ public class XferActivity extends AppCompatActivity {
 
                     int rc = conn.getResponseCode();
                     if (rc >= 300) {
-                        Log.e("me.ocv.partyup", "Error adding tag: " + rc);
+                        Log.e("me.ocv.paprashare", "Error adding tag: " + rc);
                     }
                     conn.disconnect();
                 }
             } catch (Exception e) {
-                Log.e("me.ocv.partyup", "Error adding tags: " + e.toString());
+                Log.e("me.ocv.paprashare", "Error adding tags: " + e.toString());
             }
         }).start();
     }
@@ -648,23 +620,14 @@ public class XferActivity extends AppCompatActivity {
     void onsuccess() {
         String msg = "✅ 👍\n\nCompleted successfully";
         if (files != null) {
-            if (files.length == 1)
-                msg += "\n\n" + files[0].share_url;
-            else
-                msg += "\n\n" + files.length + " files OK";
+            msg += "\n\n" + files.length + (files.length == 1 ? " file" : " files") + " uploaded.";
         }
         show_msg(msg);
         ((TextView) findViewById(R.id.upper_info)).setGravity(Gravity.CENTER);
 
-        String act = prefs.getString("on_up_ok", "menu");
+        String act = prefs.getString("on_up_ok", "close");
         if (act != null && !act.equals("menu")) {
-            if (act.equals("copy"))
-                copylink();
-            else if (act.equals("share"))
-                sharelink();
-            else
-                Toast.makeText(getApplicationContext(), "Upload OK", Toast.LENGTH_SHORT).show();
-
+            Toast.makeText(getApplicationContext(), "Upload OK", Toast.LENGTH_SHORT).show();
             finishAndRemoveTask();
             return;
         }
@@ -674,51 +637,5 @@ public class XferActivity extends AppCompatActivity {
 
         Button btn = (Button) findViewById(R.id.btnExit);
         btn.setOnClickListener(v -> finishAndRemoveTask());
-
-        Button vcopy = (Button) findViewById(R.id.btnCopyLink);
-        Button vshare = (Button) findViewById(R.id.btnShareLink);
-        if (files == null) {
-            vcopy.setVisibility(View.GONE);
-            vshare.setVisibility(View.GONE);
-            return;
-        }
-        vcopy.setOnClickListener(v -> copylink());
-        vshare.setOnClickListener(v -> sharelink());
-        if (files.length > 1)
-            vshare.setVisibility(View.GONE);
-    }
-
-    void copylink() {
-        if (files == null)
-            return;
-
-        String links = "";
-        for (F file : files)
-            links += file.share_url + "\n";
-
-        ClipboardManager cb = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-        ClipData cd = ClipData.newPlainText("copyparty upload", links);
-        cb.setPrimaryClip(cd);
-        Toast.makeText(getApplicationContext(), "Upload OK -- Link copied", Toast.LENGTH_SHORT).show();
-    }
-
-    void sharelink() {
-        if (files == null || files.length > 1)
-            return;
-
-        F f = files[0];
-        Intent send = new Intent(Intent.ACTION_SEND);
-        send.setType("text/plain");
-        send.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        send.putExtra(Intent.EXTRA_SUBJECT, "Uploaded file");
-        send.putExtra(Intent.EXTRA_TEXT, f.share_url);
-        //startActivity(Intent.createChooser(send, "Share file link"));
-
-        Intent view = new Intent(Intent.ACTION_VIEW);
-        view.setData(Uri.parse(f.share_url));
-
-        Intent i = Intent.createChooser(send, "Share file link");
-        i.putExtra(Intent.EXTRA_INITIAL_INTENTS, new Intent[]{view});
-        startActivity(i);
     }
 }

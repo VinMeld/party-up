@@ -1,4 +1,4 @@
-package me.ocv.partyup;
+package me.ocv.paprashare;
 
 import android.content.SharedPreferences;
 import android.os.Bundle;

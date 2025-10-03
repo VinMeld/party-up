@@ -5,5 +5,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "Party UP!"
+rootProject.name = "Papra Share"
 include ':app'

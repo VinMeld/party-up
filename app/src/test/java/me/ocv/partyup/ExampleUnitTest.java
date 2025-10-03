@@ -1,4 +1,4 @@
-package me.ocv.partyup;
+package me.ocv.paprashare;
 
 import org.junit.Test;
 
