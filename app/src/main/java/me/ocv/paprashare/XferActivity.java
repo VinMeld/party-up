@@ -4,9 +4,6 @@ import static java.lang.String.format;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.content.ClipData;
-import android.content.ClipboardManager;
-import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -15,23 +12,23 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-
-import com.google.android.material.chip.Chip;
-import com.google.android.material.chip.ChipGroup;
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
-
-import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
-
+import android.preference.PreferenceManager;
 import android.provider.OpenableColumns;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.View;
+import android.webkit.MimeTypeMap;
 import android.widget.Button;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.preference.PreferenceManager;
 import android.widget.Toast;
+
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+
+import com.google.android.material.chip.Chip;
+import com.google.android.material.chip.ChipGroup;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -41,6 +38,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
+import java.net.SocketException;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -48,6 +46,7 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Locale;
 
 import me.ocv.paprashare.databinding.ActivityXferBinding;
 
@@ -59,6 +58,7 @@ class F {
     public String share_url;
     public String desc;
     public String documentId;
+    public String mimeType;
 }
 
 public class XferActivity extends AppCompatActivity {
@@ -77,6 +77,8 @@ public class XferActivity extends AppCompatActivity {
     ArrayList<PapraTag> selectedTags = new ArrayList<>();
     Button btnSelectTags;
     ChipGroup tagGroup;
+    ProgressBar progbar;
+    TextView upperInfo;
 
 
     @Override
@@ -91,6 +93,8 @@ public class XferActivity extends AppCompatActivity {
 
         btnSelectTags = findViewById(R.id.btnSelectTags);
         tagGroup = findViewById(R.id.tag_group);
+        progbar = findViewById(R.id.progbar);
+        upperInfo = findViewById(R.id.upper_info);
         btnSelectTags.setEnabled(false);
 
         the_intent = getIntent();
@@ -256,12 +260,11 @@ public class XferActivity extends AppCompatActivity {
     }
 
     private void show_msg(String txt) {
-        ((TextView) findViewById(R.id.upper_info)).setText(txt);
+        upperInfo.setText(txt);
     }
 
     private void tshow_msg(String txt) {
-        final TextView tv = (TextView) findViewById(R.id.upper_info);
-        tv.post(() -> tv.setText(txt));
+        upperInfo.post(() -> upperInfo.setText(txt));
     }
 
     void need_storage(String exmsg) {
@@ -313,33 +316,19 @@ public class XferActivity extends AppCompatActivity {
         }
     }
 
-    String getext(String mime) {
-        if (mime == null)
-            return "bin";
-
-        mime = mime.replace(';', ' ').split(" ")[0];
-
-        switch (mime) {
-            case "audio/ogg":
-                return "ogg";
-            case "audio/mpeg":
-                return "mp3";
-            case "audio/mp4":
-                return "m4a";
-            case "image/jpeg":
-                return "jpg";
+    private String getMimeType(Uri uri, String fileName) {
+        String mimeType = null;
+        if (uri.getScheme().equals("content")) {
+            mimeType = getContentResolver().getType(uri);
         }
-
-        if (mime.startsWith("text/"))
-            return "txt";
-
-        if (mime.contains("/")) {
-            mime = mime.split("/")[1];
-            if (mime.matches("^[a-zA-Z0-9]{1,8}$"))
-                return mime;
+        if (mimeType == null || mimeType.isEmpty()) {
+            String extension = MimeTypeMap.getFileExtensionFromUrl(fileName);
+            if (extension != null) {
+                extension = extension.toLowerCase(Locale.ROOT);
+                mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension);
+            }
         }
-
-        return "bin";
+        return mimeType != null ? mimeType : "application/octet-stream";
     }
 
     private void handleSendText() {
@@ -355,8 +344,6 @@ public class XferActivity extends AppCompatActivity {
             if (f.handle.toString().startsWith("file:///")) {
                 f.name = Paths.get(f.handle.getPath()).getFileName().toString();
             } else {
-                // contentresolver returns the wrong filesize (off by 626 bytes)
-                // but we want the name so lets go
                 try {
                     Cursor cur = getContentResolver().query(f.handle, null, null, null, null);
                     assert cur != null;
@@ -379,7 +366,6 @@ public class XferActivity extends AppCompatActivity {
                 }
             }
 
-            // get correct filesize
             try {
                 InputStream ins = getContentResolver().openInputStream(f.handle);
                 assert ins != null;
@@ -404,10 +390,11 @@ public class XferActivity extends AppCompatActivity {
 
             if (md != null) {
                 String csum = new String(Base64.getUrlEncoder().encode(md.digest())).substring(0, 15);
-                f.name = format("mystery-file-%s.%s", csum, getext(the_intent.getType()));
+                f.name = format("mystery-file-%s.%s", csum, getMimeType(f.handle, f.name));
             }
 
-            f.desc = format("%s\n\nsize: %,d byte\ntype: %s", f.name, f.size, the_intent.getType());
+            f.mimeType = getMimeType(f.handle, f.name);
+            f.desc = format("%s\n\nsize: %,d byte\ntype: %s", f.name, f.size, f.mimeType);
         }
 
         String msg;
@@ -465,6 +452,8 @@ public class XferActivity extends AppCompatActivity {
             String documents_url = base_url + "api/organizations/" + orgId + "/documents";
 
             t0 = System.currentTimeMillis();
+            bytes_done = 0;
+            runOnUiThread(() -> progbar.setVisibility(View.VISIBLE));
             tshow_msg("Sending to " + documents_url + " ...");
 
             int nfiles = files == null ? 1 : files.length;
@@ -483,12 +472,18 @@ public class XferActivity extends AppCompatActivity {
 
                 if (files == null)
                     do_textmsg(conn);
-                else if (!do_fileput(conn, a))
+                else if (!do_fileput(conn, a, documents_url))
                     return;
             }
             findViewById(R.id.upper_info).post(() -> onsuccess());
+        } catch (SocketException e) {
+            if (e.getMessage().contains("Connection reset")) {
+                tshow_msg("Connection Error:\n\nThe server unexpectedly closed the connection. This can happen with large files if the server has an upload size limit. Please check your server's configuration (e.g., Nginx 'client_max_body_size').");
+            } else {
+                tshow_msg("Network Error: " + e.getMessage());
+            }
         } catch (Exception ex) {
-            tshow_msg("Error2: " + ex.toString());
+            tshow_msg("Error: " + ex.toString());
         }
     }
 
@@ -521,24 +516,29 @@ public class XferActivity extends AppCompatActivity {
     }
 
     @SuppressLint("DefaultLocale")
-    private boolean do_fileput(HttpURLConnection conn, int nfile) throws Exception {
+    private boolean do_fileput(HttpURLConnection conn, int nfile, String documentsUrl) throws Exception {
         F f = files[nfile];
         conn.setRequestMethod("POST");
         String boundary = "*****" + System.currentTimeMillis() + "*****";
         conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+        conn.setChunkedStreamingMode(0);
 
         OutputStream os = conn.getOutputStream();
 
         // Write file part
         String header = "--" + boundary + "\r\n";
         header += "Content-Disposition: form-data; name=\"file\"; filename=\"" + f.name + "\"\r\n";
-        header += "Content-Type: application/octet-stream\r\n";
+        header += "Content-Type: " + f.mimeType + "\r\n";
         header += "\r\n";
         os.write(header.getBytes(StandardCharsets.UTF_8));
 
         InputStream ins = getContentResolver().openInputStream(f.handle);
         byte[] buf = new byte[128 * 1024];
         assert ins != null;
+
+        final F f_final = f;
+        final int nfile_final = nfile;
+        final String final_documents_url = documentsUrl;
         while (true) {
             int n = ins.read(buf);
             if (n <= 0)
@@ -546,6 +546,28 @@ public class XferActivity extends AppCompatActivity {
 
             bytes_done += n;
             os.write(buf, 0, n);
+
+            upperInfo.post(() -> {
+                double perc = ((double) bytes_done * 1000) / bytes_total;
+                long td = 1 + System.currentTimeMillis() - t0;
+                double spd = bytes_done / (td / 1000.0);
+                long left = 0;
+                if (spd > 0) {
+                    left = (long) ((bytes_total - bytes_done) / spd);
+                }
+                upperInfo.setText(format("Sending to %s ...\n\nFile %d of %d:\n%s\n\nbytes done:  %,d\nbytes left:  %,d\nspeed:  %.2f MiB/s\nprogress:  %.2f %%\nETA:  %d sec",
+                        final_documents_url,
+                        nfile_final + 1,
+                        files.length,
+                        f_final.desc,
+                        bytes_done,
+                        bytes_total - bytes_done,
+                        spd / 1024 / 1024,
+                        perc / 10,
+                        left
+                ));
+                progbar.setProgress((int) Math.round(perc));
+            });
         }
 
         os.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
@@ -631,7 +653,7 @@ public class XferActivity extends AppCompatActivity {
             return;
         }
 
-        findViewById(R.id.progbar).setVisibility(View.GONE);
+        progbar.setVisibility(View.GONE);
         findViewById(R.id.successbuttons).setVisibility(View.VISIBLE);
 
         Button btn = (Button) findViewById(R.id.btnExit);
